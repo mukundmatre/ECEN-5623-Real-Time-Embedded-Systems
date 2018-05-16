@@ -17,7 +17,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/videoio.hpp>
 
-
+// POSIX message queue
 #define PPM_MQ "/ppm_writer_mq"
 #define JPG_MQ "/jpg_writer_mq"
 #define SHP_MQ "/sharp_writer_mq"
@@ -60,15 +60,16 @@ struct sched_param main_param;
 pthread_attr_t main_attr;
 pid_t mainpid;
 
+// semaphores
 sem_t sem_ppm, sem_jpg, sem_sharp, sem_write, sem_BE;
 
-
+// function declarations
 double getTimeMsec();
 void precisionDelay(long int seconds, long int nanoseconds);
 void intialize_messagequeue(void);
 void destroy_messagequeue(void);
 
-
+// accurate time sleep
 void precisionDelay(long int seconds, long int nanoseconds)
 {
   sleep_time.tv_sec = seconds;
@@ -85,6 +86,7 @@ void precisionDelay(long int seconds, long int nanoseconds)
 
 }
 
+// get time in ms with realtime clock
 double getTimeMsec(void)
 {
   struct timespec event_ts = {0, 0};
@@ -93,6 +95,7 @@ double getTimeMsec(void)
   return ((event_ts.tv_sec)*1000.0) + ((event_ts.tv_nsec)/1000000.0);
 }
 
+// setting max messages and message size
 void intialize_messagequeue(void)
 {
   message_queue_attr.mq_maxmsg = NUM_FRAMES;
@@ -129,6 +132,7 @@ void intialize_messagequeue(void)
 
 }
 
+
 void destroy_messagequeue(void)
 {
   mq_close(frame_message_queue);
@@ -141,6 +145,8 @@ void destroy_messagequeue(void)
   mq_unlink(BACK_MQ);
 }
 
+
+// main thread for capturing frames from camera
 void *captureThread(void *threadp)
 {
     int i = 0;
@@ -161,6 +167,7 @@ void *captureThread(void *threadp)
 
     while(i < NUM_FRAMES)
     {
+      // wait for sem_post
         sem_wait(&sem_ppm);
         capture_start_time= getTimeMsec();
         printf("Frame: %d\n", i);
@@ -211,11 +218,14 @@ void *captureThread(void *threadp)
         sem_post(&sem_BE);
 
     }
+    // timing calculations
     average_jitter = accumulated_jitter/NUM_FRAMES;
     printf("\nAverage capture jitter: %0.8lf miliseconds\n\n", average_jitter);
     pthread_exit(NULL);
 }
 
+
+// thread for writing ppm files to disk
 void *ppmwriterThread(void *threadp)
 {
     int i = 0;
@@ -259,7 +269,7 @@ void *ppmwriterThread(void *threadp)
       outfile.open (name.str(), ios::in|ios::out|ios::trunc);
       temp1.open("test.txt", ios::in|ios::out);
       temp.open("spec.out", ios::in);
-
+      // writing file with timestamp
       outfile << "P6" << endl << "#Time Stamp: " << setprecision(10) << fixed << capture_start_time/1000.0 << " seconds" << endl << "#System Specs: " << temp.rdbuf() << temp1.rdbuf();
 
       outfile.close();
@@ -270,6 +280,8 @@ void *ppmwriterThread(void *threadp)
     pthread_exit(NULL);
 }
 
+
+// thread for compressing frame to jpeg and writing to disk
 void *jpgThread(void *threadp)
 {
     Mat frame_jpg;
@@ -322,7 +334,7 @@ void *jpgThread(void *threadp)
     pthread_exit(NULL);
 }
 
-
+// thread for sharpening image and writing it to disk
 void *sharpenThread(void *threadp)
 {
     int i = 0;
@@ -377,6 +389,8 @@ void *sharpenThread(void *threadp)
     pthread_exit(NULL);
 }
 
+
+// thread for applying background elimination on frame and writing to disk
 void *backgroundElimThread(void *threadp)
 {
   int i=0;
@@ -440,6 +454,7 @@ void *backgroundElimThread(void *threadp)
 
 }
 
+// this thread uses precisionDelay to post semaphore for capturethread once a second
 void *Sequencer(void *threadp)
 {
   int i = 0;
@@ -458,7 +473,7 @@ void *Sequencer(void *threadp)
 
 int main(int argc, char *argv[])
 {
-
+    // taking device intex as input from user
     if(argc > 1)
     {
         sscanf(argv[1], "%d", &dev);
@@ -484,6 +499,7 @@ int main(int argc, char *argv[])
     cpu_set_t cpuset1;
 
     intialize_messagequeue();
+    // initializing semaphores
     sem_init(&sem_ppm, 0, 0);
     sem_init(&sem_write, 0, 0);
     sem_init(&sem_jpg, 0, 0);
@@ -499,6 +515,7 @@ int main(int argc, char *argv[])
     rc=sched_setscheduler(getpid(), SCHED_FIFO, &main_param);
     if(rc < 0) perror("main_param");
 
+    // setting core affinity
     CPU_ZERO(&cpuset);
     CPU_SET(1, &cpuset);
 
@@ -513,7 +530,7 @@ int main(int argc, char *argv[])
 
     CPU_ZERO(&cpuset1);
     CPU_SET(2, &cpuset1);
-
+    // setting scheduling policy
     for(i=1;i<NUM_THREADS-1;i++){
       rc=pthread_attr_setinheritsched(&rt_sched_attr[i], PTHREAD_EXPLICIT_SCHED);
       rc=pthread_attr_setschedpolicy(&rt_sched_attr[i], SCHED_FIFO);
