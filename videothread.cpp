@@ -1,4 +1,5 @@
-
+// Application for real-time capture of frames at a frequency of 1fps and achieve real-time image processing and employment
+// of efficient design practices to minimize jitter in execution time of different tasks
 #include <mqueue.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -146,7 +147,7 @@ void destroy_messagequeue(void)
 }
 
 
-// main thread for capturing frames from camera
+// THREAD 1: main thread for capturing frames from camera
 void *captureThread(void *threadp)
 {
     int i = 0;
@@ -161,7 +162,7 @@ void *captureThread(void *threadp)
     Mat frame_ppm;
     char *frame_ptr;
     char buffer[sizeof(char *)];
-    frame_ptr =  (char *) malloc(sizeof(frame_ppm.data));//this is creating problem
+    frame_ptr =  (char *) malloc(sizeof(frame_ppm.data));
 
     system("uname -a > spec.out");
 
@@ -181,6 +182,8 @@ void *captureThread(void *threadp)
           printf("Null pointer\n");
           break;
         }
+
+        // Send pointer to frame data to other threads through message queue
 
         if(mq_send(frame_message_queue, buffer, message_queue_attr.mq_msgsize, 30) == ERROR)
         {
@@ -212,6 +215,7 @@ void *captureThread(void *threadp)
         }
         prev_exec_time = exec_time;
         accumulated_jitter += cap_jitter;
+        // posting semaphores for all threads
         sem_post(&sem_write);
         sem_post(&sem_jpg);
         sem_post(&sem_sharp);
@@ -225,7 +229,7 @@ void *captureThread(void *threadp)
 }
 
 
-// thread for writing ppm files to disk
+// THREAD 2: thread for writing ppm files to disk
 void *ppmwriterThread(void *threadp)
 {
     int i = 0;
@@ -281,7 +285,7 @@ void *ppmwriterThread(void *threadp)
 }
 
 
-// thread for compressing frame to jpeg and writing to disk
+// THREAD 3: thread for compressing frame to jpeg and writing to disk
 void *jpgThread(void *threadp)
 {
     Mat frame_jpg;
@@ -334,7 +338,8 @@ void *jpgThread(void *threadp)
     pthread_exit(NULL);
 }
 
-// thread for sharpening image and writing it to disk
+
+// THREAD 4: thread for sharpening image and writing it to disk
 void *sharpenThread(void *threadp)
 {
     int i = 0;
@@ -390,7 +395,7 @@ void *sharpenThread(void *threadp)
 }
 
 
-// thread for applying background elimination on frame and writing to disk
+// THREAD 5: thread for applying background elimination on frame and writing to disk
 void *backgroundElimThread(void *threadp)
 {
   int i=0;
@@ -454,7 +459,7 @@ void *backgroundElimThread(void *threadp)
 
 }
 
-// this thread uses precisionDelay to post semaphore for capturethread once a second
+// THREAD 6: this thread uses precisionDelay to post semaphore for capturethread once a second
 void *Sequencer(void *threadp)
 {
   int i = 0;
